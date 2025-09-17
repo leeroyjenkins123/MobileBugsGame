@@ -81,7 +81,7 @@ class RegistrationActivity: ComponentActivity() {
             in 823..922 -> Pair("Дева","Virgo")
             in 923..1022 -> Pair("Весы","Libra")
             in 1023..1121 -> Pair("Скорпион","Scorpio")
-            in 1122..1221 -> Pair("Стрелец","Sagittatius")
+            in 1122..1221 -> Pair("Стрелец","Sagittarius")
             in 1222..1231, in 101..119 -> Pair("Козерог","Capricorn")
             else -> Pair("Неизвестно", "Unknown")
         }
