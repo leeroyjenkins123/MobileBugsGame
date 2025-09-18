@@ -1,27 +1,42 @@
 package com.example.mobilebugsgame
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import android.widget.*
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ArrayAdapter
+import androidx.fragment.app.Fragment
+import android.widget.Button
+import android.widget.CalendarView
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.RadioGroup
+import android.widget.SeekBar
+import android.widget.Spinner
+import android.widget.TextView
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 
-class RegistrationActivity: ComponentActivity() {
+class RegistrationFragment : Fragment(){
     private var selectedDate: Long = Calendar.getInstance().timeInMillis
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        val view = inflater.inflate(R.layout.fragment_registration,container,false)
 
-        setContentView(R.layout.activity_registration)
-
-        val etFullName = findViewById<EditText>(R.id.etFullName)
-        val rgGender = findViewById<RadioGroup>(R.id.rgGender)
-        val spinnerCourse = findViewById<Spinner>(R.id.spinnerCourse)
-        val tvGameDifficulty = findViewById<TextView>(R.id.tvGameDifficulty)
-        val sbGameDifficulty = findViewById<SeekBar>(R.id.sbGameDifficulty)
-        val cvCalendar = findViewById<CalendarView>(R.id.cvCalendar)
-        val tvZodiacSign = findViewById<TextView>(R.id.tvZodiacSign)
-        val ivZodiacSign = findViewById<ImageView>(R.id.ivZodiacSign)
-        val btnRegister = findViewById<Button>(R.id.btnRegister)
-        val tvResult = findViewById<TextView>(R.id.tvResult)
+        val etFullName = view.findViewById<EditText>(R.id.etFullName)
+        val rgGender = view.findViewById<RadioGroup>(R.id.rgGender)
+        val spinnerCourse = view.findViewById<Spinner>(R.id.spinnerCourse)
+        val tvGameDifficulty = view.findViewById<TextView>(R.id.tvGameDifficulty)
+        val sbGameDifficulty = view.findViewById<SeekBar>(R.id.sbGameDifficulty)
+        val cvCalendar = view.findViewById<CalendarView>(R.id.cvCalendar)
+        val tvZodiacSign = view.findViewById<TextView>(R.id.tvZodiacSign)
+        val ivZodiacSign = view.findViewById<ImageView>(R.id.ivZodiacSign)
+        val btnRegister = view.findViewById<Button>(R.id.btnRegister)
+        val tvResult = view.findViewById<TextView>(R.id.tvResult)
 
         selectedDate = cvCalendar.date
         updateZodiacDisplay(selectedDate, ivZodiacSign,tvZodiacSign)
@@ -59,13 +74,16 @@ class RegistrationActivity: ComponentActivity() {
             val difficulty = sbGameDifficulty.progress
             val zodiacSign = getZodiacSign(selectedDate)
 
+            val settingsFragment = parentFragmentManager.fragments.find { it is SettingsFragment } as? SettingsFragment
+            val settings = settingsFragment?.settings ?: Settings(1,10,5,60)
+
             val player = createPlayer(fullName,gender,course,difficulty,selectedDate,zodiacSign.first)
-            val info = formatPlayerInfo(player)
+            val info = formatPlayerInfo(player, settings)
             tvResult.text = info
             tvResult.visibility = TextView.VISIBLE
         }
+        return view
     }
-
     private fun getZodiacSign(dateMillis: Long): Pair<String, String>{
         val calendar = Calendar.getInstance().apply { timeInMillis = dateMillis }
         val day = calendar.get(Calendar.DAY_OF_MONTH)
@@ -81,7 +99,7 @@ class RegistrationActivity: ComponentActivity() {
             in 823..922 -> Pair("Дева","Virgo")
             in 923..1022 -> Pair("Весы","Libra")
             in 1023..1121 -> Pair("Скорпион","Scorpio")
-            in 1122..1221 -> Pair("Стрелец","Sagittarius")
+            in 1122..1221 -> Pair("Стрелец","Sagittatius")
             in 1222..1231, in 101..119 -> Pair("Козерог","Capricorn")
             else -> Pair("Неизвестно", "Unknown")
         }
@@ -126,16 +144,16 @@ class RegistrationActivity: ComponentActivity() {
 
     private fun setSpinnerCourse(): ArrayAdapter<String>{
         val courses = arrayOf("Бакалавриат. 1 курс", "Бакалавриат. 2 курс", "Бакалавриат. 3 курс", "Бакалавриат. 4 курс", "Магистратура. 1 курс","Магистратура. 2 курс")
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item,courses)
+        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item,courses)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         return adapter
     }
 
-    private fun formatPlayerInfo(player: Player): String{
+    private fun formatPlayerInfo(player: Player, settings: Settings): String{
         val calendar = Calendar.getInstance().apply { timeInMillis = player.birthDate }
         val birthDateStr = "${calendar.get(Calendar.DAY_OF_MONTH)}.${calendar.get(Calendar.MONTH) + 1}.${calendar.get(Calendar.YEAR)}"
         return """
-            Информация об игроке:
+            Регистрация успешна:
             
             ФИО: ${player.fullName}
             Пол: ${player.gender}
@@ -144,7 +162,11 @@ class RegistrationActivity: ComponentActivity() {
             Дата рождения: $birthDateStr
             Знак зодиака: ${player.zodiacSign}
             
-            Регистрация успешна!
+            --- Настройки игры ---
+            Скорость: ${settings.gameSpeed}
+            Макс. тараканов: ${settings.maxInsects}
+            Интервал бонусов: ${settings.bonusInterval} сек
+            Длительность раунда: ${settings.roundDuration} сек
         """.trimIndent()
     }
 }
