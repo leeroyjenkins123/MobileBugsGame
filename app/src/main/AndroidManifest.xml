@@ -13,6 +13,11 @@
         android:theme="@style/Theme.MobileBugsGame">
 
         <activity
+            android:name=".GameActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MobileBugsGame" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.MobileBugsGame">

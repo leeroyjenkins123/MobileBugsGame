@@ -1,5 +1,7 @@
 package com.example.mobilebugsgame
 
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -14,12 +16,14 @@ import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
+import androidx.annotation.RequiresApi
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 
 class RegistrationFragment : Fragment(){
     private var selectedDate: Long = Calendar.getInstance().timeInMillis
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -43,6 +47,7 @@ class RegistrationFragment : Fragment(){
 
         spinnerCourse.adapter = setSpinnerCourse()
 
+        sbGameDifficulty.min = 1
         sbGameDifficulty.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener{
             override fun onProgressChanged(
                 seekBar: SeekBar?,
@@ -75,12 +80,17 @@ class RegistrationFragment : Fragment(){
             val zodiacSign = getZodiacSign(selectedDate)
 
             val settingsFragment = parentFragmentManager.fragments.find { it is SettingsFragment } as? SettingsFragment
-            val settings = settingsFragment?.settings ?: Settings(1,10,5,60)
+            val baseSettings = settingsFragment?.settings ?: Settings(1,10,5,60)
 
             val player = createPlayer(fullName,gender,course,difficulty,selectedDate,zodiacSign.first)
-            val info = formatPlayerInfo(player, settings)
-            tvResult.text = info
-            tvResult.visibility = TextView.VISIBLE
+//            val info = formatPlayerInfo(player, settings)
+//            tvResult.text = info
+//            tvResult.visibility = TextView.VISIBLE
+            val intent = Intent(requireContext(), GameActivity::class.java).apply {
+                putExtra("player", player)
+                putExtra("settings", baseSettings)
+            }
+            startActivity(intent)
         }
         return view
     }
