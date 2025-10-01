@@ -24,6 +24,30 @@ class GameActivity : AppCompatActivity(){
     private lateinit var gameContainer: ViewGroup
     private lateinit var gameOverText: TextView
 
+    private companion object{
+        const val BASE_MOVEMENT_DURATION = 2000L // (1.5 секунды)
+        const val BASE_SPAWN_INTERVAL = 1300L // (1 секунда)
+        const val BASE_INSECTS_PER_SPAWN = 1
+    }
+
+    private data class InsectType(
+        val drawableRes: Int,
+        val points: Int,
+        val baseSpeedMultiplier: Float,
+        val spawnChance: Float
+    )
+
+    private val insectTypes = listOf(
+        InsectType(R.drawable.ic_cockroach, 10, 1.0f, 0.5f),  // Нормальная скорость
+        InsectType(R.drawable.ic_beetle, 5, 0.5f, 0.5f),         // Медленнее
+        InsectType(R.drawable.ic_fly, 15, 1.5f, 0.5f)             // Быстрее
+    )
+
+    private var gameTimer: CountDownTimer? = null
+    private var insectSpawnTimer : CountDownTimer? = null
+    private var isGameActive = true
+    private var activeInsects = mutableListOf<ImageView>()
+
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?){
         super.onCreate(savedInstanceState)
@@ -37,6 +61,241 @@ class GameActivity : AppCompatActivity(){
         livesView = findViewById(R.id.textLives)
         gameContainer = findViewById(R.id.gameContainer)
         gameOverText = findViewById(R.id.textGameOver)
+
+        gameContainer.setOnTouchListener { _, event ->
+            if(event.action == MotionEvent.ACTION_DOWN && isGameActive){
+                handleMiss()
+            }
+            true
+        }
+
+        updateUI()
+        startGame()
     }
 
+    private fun startGame(){
+        gameOverText.visibility = TextView.GONE
+        timerView.visibility = TextView.VISIBLE
+
+        gameTimer = object : CountDownTimer(settings.roundDuration * 1000L, 1000L){
+            override fun onTick(millisUntilFinished: Long) {
+                timerView.text = "Время: ${millisUntilFinished / 1000}"
+            }
+
+            override fun onFinish() {
+                endGame("Время вышло!")
+            }
+        }.start()
+
+        insectSpawnTimer = object : CountDownTimer(settings.roundDuration * 1000L, getScaledSpawnInterval()){
+            override fun onTick(millisUntilFinished: Long) {
+                if(isGameActive){
+                    // ИСПРАВЛЕНИЕ: Проверяем строгое ограничение максимального количества
+                    if(activeInsects.size < settings.maxInsects){
+                        val insectsToSpawn = getScaledSpawnPerSpawn().coerceAtMost(settings.maxInsects - activeInsects.size)
+                        if(insectsToSpawn > 0){
+                            repeat(insectsToSpawn){
+                                spawnInsect()
+                            }
+                        }
+                    }
+                }
+            }
+            override fun onFinish() {}
+        }.start()
+    }
+
+    private fun getScaledSpawnPerSpawn() : Int{
+        val scaledCount = (BASE_INSECTS_PER_SPAWN * settings.gameSpeed).toInt()
+        return scaledCount.coerceIn(1, settings.maxInsects.coerceAtLeast(1))
+    }
+
+    private fun getScaledSpawnInterval() : Long{
+        val scaledInterval = (BASE_SPAWN_INTERVAL / (settings.gameSpeed * 2)).toLong()
+        return scaledInterval.coerceIn(200L, 2000L)
+    }
+
+    private fun getScaledMovementDuration(insectType: InsectType) : Long{
+        val scaledDuration = (BASE_MOVEMENT_DURATION / (settings.gameSpeed * insectType.baseSpeedMultiplier)).toLong()
+        return scaledDuration.coerceIn(300L, 5000L)
+    }
+
+    private fun spawnInsect(){
+        if(activeInsects.size >= settings.maxInsects ) return
+
+        val insectType = getRandomInsectType()
+        val insect = ImageView(this).apply {
+            setImageResource(insectType.drawableRes)
+            layoutParams = ViewGroup.LayoutParams(120, 120)
+            x = Random.nextInt(50, gameContainer.width - 120).toFloat()
+            y = Random.nextInt(50, gameContainer.width - 120).toFloat()
+            tag = insectType
+
+            setOnClickListener {
+                if(isGameActive){
+                    score += insectType.points
+                    updateUI()
+                    removeInsect(this)
+
+                    animate().scaleX(0f)
+                        .scaleY(0f)
+                        .alpha(0f)
+                        .setDuration(200)
+                        .withEndAction {
+                            gameContainer.removeView(this)
+                        }
+                        .start()
+                }
+            }
+        }
+        gameContainer.addView(insect)
+        activeInsects.add(insect)
+        startInsectMovement(insect, insectType)
+    }
+
+    private fun startInsectMovement(insect : ImageView, insectType: InsectType){
+        val targetX = Random.nextInt(50, gameContainer.width - 120).toFloat()
+        val targetY = Random.nextInt(50, gameContainer.height - 120).toFloat()
+
+        val moveX = ObjectAnimator.ofFloat(insect,"translationX",insect.x, targetX)
+        val moveY = ObjectAnimator.ofFloat(insect,"translationY",insect.y, targetY)
+
+        val actualDuration = getScaledMovementDuration(insectType)
+
+        moveX.duration = actualDuration
+        moveY.duration = actualDuration
+        moveY.startDelay = 0
+        moveX.startDelay = 0
+
+        moveX.start()
+        moveY.start()
+
+        moveX.addUpdateListener {
+            if(!isGameActive){
+                moveX.cancel()
+                moveY.cancel()
+            }
+        }
+
+        insect.postDelayed({
+            if(isGameActive && insect.parent != null){
+                removeInsect(insect)
+                insect.animate()
+                    .alpha(0f)
+                    .setDuration(200)
+                    .withEndAction {
+                        gameContainer.removeView(insect)
+                    }
+                    .start()
+            }
+        }, actualDuration)
+    }
+
+    private fun removeInsect(insect : ImageView){
+        insect.clearAnimation()
+        insect.setOnClickListener(null)
+        activeInsects.remove(insect)
+    }
+
+    private fun getRandomInsectType() : InsectType{
+//        val random = Random.nextFloat()
+//        var cumulativeChance = 0f
+//
+//        insectTypes.forEach { type ->
+//            cumulativeChance += type.spawnChance
+//            if(random <= cumulativeChance) return type
+//        }
+//        return insectTypes.first()
+        return insectTypes.random()
+    }
+
+    private fun updateUI(){
+        scoreView.text = "Очки: $score"
+        livesView.text = "Жизни: $lives"
+    }
+
+    private fun handleMiss(){
+        if(!isGameActive) return
+
+        lives--
+        if(score > 0){
+            score -= 2
+            score = score.coerceAtLeast(0)
+        }
+        updateUI()
+
+        gameContainer.animate()
+            .scaleX(0.95f)
+            .scaleY(0.95f)
+            .setDuration(100L)
+            .withEndAction {
+                gameContainer.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(100L)
+                    .start()
+            }
+            .start()
+        if(lives <= 0){
+            gameOver()
+        }
+    }
+
+    private fun gameOver(){
+        isGameActive = false
+        gameTimer?.cancel()
+        insectSpawnTimer?.cancel()
+
+        activeInsects.forEach { insect ->
+            insect.clearAnimation()
+            insect.setOnClickListener(null)
+            insect.animate().cancel()
+            gameContainer.removeView(insect)
+        }
+        activeInsects.clear()
+
+        endGame("Жизни закончились!")
+    }
+
+    private fun endGame(message: String){
+        timerView.visibility = TextView.GONE
+        gameOverText.text = message
+        gameOverText.visibility = TextView.VISIBLE
+
+        activeInsects.forEach { insect ->
+            insect.clearAnimation()
+            insect.setOnClickListener(null)
+        }
+        activeInsects.clear()
+
+        gameContainer.postDelayed({
+            gameContainer.removeAllViews()
+            showGameResultDialog()
+        }, 1000)
+    }
+
+    private fun showGameResultDialog(){
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Игра окончена!")
+            .setMessage("""
+                Ваш результат: $score очков
+                Уровень сложности: ${player.difficulty}
+                Скорость игры: ${settings.gameSpeed}
+                Игрок: ${player.fullName}
+            """.trimIndent())
+            .setPositiveButton("OK"){dialog, _ ->
+                dialog.dismiss()
+                finish()
+            }
+            .setCancelable(false)
+            .create()
+        dialog.show()
+    }
+
+    override fun onDestroy(){
+        super.onDestroy()
+        gameTimer?.cancel()
+        insectSpawnTimer?.cancel()
+        isGameActive = false
+    }
 }

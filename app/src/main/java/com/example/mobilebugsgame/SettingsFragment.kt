@@ -1,17 +1,20 @@
 package com.example.mobilebugsgame
 
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.annotation.RequiresApi
 import androidx.fragment.app.Fragment
 
 class SettingsFragment : Fragment() {
 
     var settings = Settings(1,10,5,60)
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -20,6 +23,7 @@ class SettingsFragment : Fragment() {
 
         val sbSpeed = view.findViewById<SeekBar>(R.id.sbSpeed)
         val tvSpeed = view.findViewById<TextView>(R.id.tvSpeed)
+        sbSpeed.min = 1
         sbSpeed.progress = settings.gameSpeed
         tvSpeed.text = "Скорость игры: ${settings.gameSpeed}"
         sbSpeed.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
@@ -34,6 +38,7 @@ class SettingsFragment : Fragment() {
         // Максимальное количество тараканов
         val sbMaxCockroaches = view.findViewById<SeekBar>(R.id.sbMaxCockroaches)
         val tvMaxCockroaches = view.findViewById<TextView>(R.id.tvMaxCockroaches)
+        sbMaxCockroaches.min = 1
         sbMaxCockroaches.progress = settings.maxInsects
         tvMaxCockroaches.text = "Максимальное количество тараканов: ${settings.maxInsects}"
         sbMaxCockroaches.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
@@ -48,6 +53,7 @@ class SettingsFragment : Fragment() {
         // Интервал появления бонусов
         val sbBonusInterval = view.findViewById<SeekBar>(R.id.sbBonusInterval)
         val tvBonusInterval = view.findViewById<TextView>(R.id.tvBonusInterval)
+        sbBonusInterval.min = 1
         sbBonusInterval.progress = settings.bonusInterval
         tvBonusInterval.text = "Интервал появления бонусов: ${settings.bonusInterval} сек"
         sbBonusInterval.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
@@ -62,6 +68,7 @@ class SettingsFragment : Fragment() {
         // Длительность раунда
         val sbRoundDuration = view.findViewById<SeekBar>(R.id.sbRoundDuration)
         val tvRoundDuration = view.findViewById<TextView>(R.id.tvRoundDuration)
+        sbRoundDuration.min = 1
         sbRoundDuration.progress = settings.roundDuration
         tvRoundDuration.text = "Длительность раунда: ${settings.roundDuration} сек"
         sbRoundDuration.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
