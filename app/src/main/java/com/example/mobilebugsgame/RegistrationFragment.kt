@@ -1,5 +1,6 @@
 package com.example.mobilebugsgame
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -78,9 +79,14 @@ class RegistrationFragment : Fragment(){
             val settings = settingsFragment?.settings ?: Settings(1,10,5,60)
 
             val player = createPlayer(fullName,gender,course,difficulty,selectedDate,zodiacSign.first)
-            val info = formatPlayerInfo(player, settings)
-            tvResult.text = info
-            tvResult.visibility = TextView.VISIBLE
+//            val info = formatPlayerInfo(player, settings)
+//            tvResult.text = info
+//            tvResult.visibility = TextView.VISIBLE
+            val intent = Intent(requireContext(), GameActivity::class.java).apply {
+                putExtra("player", player)
+                putExtra("settings", settings)
+            }
+            startActivity(intent)
         }
         return view
     }

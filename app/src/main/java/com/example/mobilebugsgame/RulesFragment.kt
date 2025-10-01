@@ -16,14 +16,17 @@ class RulesFragment: Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        val textView = TextView(requireContext())
+        // Используем layout файл вместо создания TextView программно
+        val view = inflater.inflate(R.layout.fragment_rules, container, false)
+        val textRules = view.findViewById<TextView>(R.id.textRules)
+
         val htmlText = getString(R.string.rules_html)
-        textView.text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        textRules.text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             Html.fromHtml(htmlText, Html.FROM_HTML_MODE_LEGACY)
         } else {
             Html.fromHtml(htmlText)
         }
-        textView.setPadding(16,16,16,16)
-        return textView
+
+        return view
     }
 }
