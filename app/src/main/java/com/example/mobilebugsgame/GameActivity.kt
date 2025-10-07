@@ -90,7 +90,6 @@ class GameActivity : AppCompatActivity(){
         insectSpawnTimer = object : CountDownTimer(settings.roundDuration * 1000L, getScaledSpawnInterval()){
             override fun onTick(millisUntilFinished: Long) {
                 if(isGameActive){
-                    // ИСПРАВЛЕНИЕ: Проверяем строгое ограничение максимального количества
                     if(activeInsects.size < settings.maxInsects){
                         val insectsToSpawn = getScaledSpawnPerSpawn().coerceAtMost(settings.maxInsects - activeInsects.size)
                         if(insectsToSpawn > 0){
@@ -113,11 +112,6 @@ class GameActivity : AppCompatActivity(){
     private fun getScaledSpawnInterval() : Long{
         val scaledInterval = (BASE_SPAWN_INTERVAL / (settings.gameSpeed * 2)).toLong()
         return scaledInterval.coerceIn(200L, 2000L)
-    }
-
-    private fun getScaledMovementDuration(insectType: InsectType) : Long{
-        val scaledDuration = (BASE_MOVEMENT_DURATION / (settings.gameSpeed * insectType.baseSpeedMultiplier)).toLong()
-        return scaledDuration.coerceIn(300L, 5000L)
     }
 
     private fun spawnInsect(){
@@ -143,6 +137,9 @@ class GameActivity : AppCompatActivity(){
                         .setDuration(200)
                         .withEndAction {
                             gameContainer.removeView(this)
+                            if(isGameActive && activeInsects.size < settings.maxInsects){
+                                spawnInsect()
+                            }
                         }
                         .start()
                 }
@@ -154,41 +151,36 @@ class GameActivity : AppCompatActivity(){
     }
 
     private fun startInsectMovement(insect : ImageView, insectType: InsectType){
-        val targetX = Random.nextInt(50, gameContainer.width - 120).toFloat()
-        val targetY = Random.nextInt(50, gameContainer.height - 120).toFloat()
+        val speed = (5 * insectType.baseSpeedMultiplier * settings.gameSpeed).toInt().coerceAtLeast(2)
 
-        val moveX = ObjectAnimator.ofFloat(insect,"translationX",insect.x, targetX)
-        val moveY = ObjectAnimator.ofFloat(insect,"translationY",insect.y, targetY)
+        var dx = if (Random.nextBoolean()) speed else -speed
+        var dy = if (Random.nextBoolean()) speed else -speed
 
-        val actualDuration = getScaledMovementDuration(insectType)
+        val stepTime = 16L
 
-        moveX.duration = actualDuration
-        moveY.duration = actualDuration
-        moveY.startDelay = 0
-        moveX.startDelay = 0
+        val moveRunnable = object : Runnable {
+            override fun run() {
+                if (!isGameActive || insect.parent == null) return
 
-        moveX.start()
-        moveY.start()
+                var newX = insect.x + dx
+                var newY = insect.y + dy
 
-        moveX.addUpdateListener {
-            if(!isGameActive){
-                moveX.cancel()
-                moveY.cancel()
+                if (newX <= 0 || newX + insect.width >= gameContainer.width) {
+                    dx = -dx
+                    newX = insect.x + dx
+                }
+                if (newY <= 0 || newY + insect.height >= gameContainer.height) {
+                    dy = -dy
+                    newY = insect.y + dy
+                }
+
+                insect.x = newX
+                insect.y = newY
+
+                insect.postDelayed(this, stepTime)
             }
         }
-
-        insect.postDelayed({
-            if(isGameActive && insect.parent != null){
-                removeInsect(insect)
-                insect.animate()
-                    .alpha(0f)
-                    .setDuration(200)
-                    .withEndAction {
-                        gameContainer.removeView(insect)
-                    }
-                    .start()
-            }
-        }, actualDuration)
+        insect.post(moveRunnable)
     }
 
     private fun removeInsect(insect : ImageView){
@@ -198,14 +190,6 @@ class GameActivity : AppCompatActivity(){
     }
 
     private fun getRandomInsectType() : InsectType{
-//        val random = Random.nextFloat()
-//        var cumulativeChance = 0f
-//
-//        insectTypes.forEach { type ->
-//            cumulativeChance += type.spawnChance
-//            if(random <= cumulativeChance) return type
-//        }
-//        return insectTypes.first()
         return insectTypes.random()
     }
 
