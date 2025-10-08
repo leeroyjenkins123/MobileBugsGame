@@ -25,7 +25,6 @@ class GameActivity : AppCompatActivity(){
     private lateinit var gameOverText: TextView
 
     private companion object{
-        const val BASE_MOVEMENT_DURATION = 2000L // (1.5 секунды)
         const val BASE_SPAWN_INTERVAL = 1300L // (1 секунда)
         const val BASE_INSECTS_PER_SPAWN = 1
     }
@@ -105,12 +104,12 @@ class GameActivity : AppCompatActivity(){
     }
 
     private fun getScaledSpawnPerSpawn() : Int{
-        val scaledCount = (BASE_INSECTS_PER_SPAWN * settings.gameSpeed).toInt()
+        val scaledCount = (BASE_INSECTS_PER_SPAWN * settings.gameSpeed)
         return scaledCount.coerceIn(1, settings.maxInsects.coerceAtLeast(1))
     }
 
     private fun getScaledSpawnInterval() : Long{
-        val scaledInterval = (BASE_SPAWN_INTERVAL / (settings.gameSpeed * 2)).toLong()
+        val scaledInterval = (BASE_SPAWN_INTERVAL / (settings.gameSpeed * 2))
         return scaledInterval.coerceIn(200L, 2000L)
     }
 
@@ -131,6 +130,8 @@ class GameActivity : AppCompatActivity(){
                     updateUI()
                     removeInsect(this)
 
+                    showKillSplash(x, y)
+
                     animate().scaleX(0f)
                         .scaleY(0f)
                         .alpha(0f)
@@ -148,6 +149,31 @@ class GameActivity : AppCompatActivity(){
         gameContainer.addView(insect)
         activeInsects.add(insect)
         startInsectMovement(insect, insectType)
+    }
+
+    private fun showKillSplash(x: Float, y: Float){
+        val killSplash = ImageView(this).apply {
+            setImageResource(R.drawable.ic_kill_splash)
+            layoutParams = ViewGroup.LayoutParams(120, 120)
+            this.x = x
+            this.y = y
+            alpha = 0f
+
+            animate()
+                .alpha(0.8f)
+                .setDuration(200)
+                .withEndAction {
+                    animate()
+                        .alpha(0f)
+                        .setDuration(200)
+                        .withEndAction {
+                            gameContainer.removeView(this)
+                        }
+                        .start()
+                }
+                .start()
+        }
+        gameContainer.addView(killSplash)
     }
 
     private fun startInsectMovement(insect : ImageView, insectType: InsectType){
