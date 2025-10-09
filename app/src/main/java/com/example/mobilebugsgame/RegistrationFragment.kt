@@ -17,12 +17,22 @@ import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.annotation.RequiresApi
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 
 class RegistrationFragment : Fragment(){
     private var selectedDate: Long = Calendar.getInstance().timeInMillis
+    private lateinit var viewModel: GameViewModel
+
+    private var currentPlayerId: Long = 0
+    private var currentSettingsId: Long = 0
+    private var isEditingExistingPlayer = false
+
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -30,6 +40,14 @@ class RegistrationFragment : Fragment(){
         savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.fragment_registration,container,false)
+
+        val database = AppDatabase.getInstance(requireContext())
+        val repository = GameRepository(
+            database.playerDao(),
+            database.gameSettingsDao(),
+            database.gameResultsDao()
+        )
+        viewModel = ViewModelProvider(this, GameViewModelFactory(repository))[GameViewModel::class.java]
 
         val etFullName = view.findViewById<EditText>(R.id.etFullName)
         val rgGender = view.findViewById<RadioGroup>(R.id.rgGender)
@@ -40,6 +58,8 @@ class RegistrationFragment : Fragment(){
         val tvZodiacSign = view.findViewById<TextView>(R.id.tvZodiacSign)
         val ivZodiacSign = view.findViewById<ImageView>(R.id.ivZodiacSign)
         val btnRegister = view.findViewById<Button>(R.id.btnRegister)
+        val btnSelectPlayer = view.findViewById<Button>(R.id.btnSelectPlayer)
+        val btnNewPlayer = view.findViewById<Button>(R.id.btnNewPlayer)
         val tvResult = view.findViewById<TextView>(R.id.tvResult)
 
         selectedDate = cvCalendar.date
@@ -68,31 +88,336 @@ class RegistrationFragment : Fragment(){
         }
         selectedDate = cvCalendar.date
 
-        btnRegister.setOnClickListener {
-            val fullName = etFullName.text.toString()
-            val gender = when(rgGender.checkedRadioButtonId){
-                R.id.rbMale -> "Мужчина"
-                R.id.rbFemale -> "Женщина"
-                else -> "Не выбран"
+        btnSelectPlayer.setOnClickListener {
+            showPlayerSelectionDialog { player, settings ->
+                loadPlayerData(
+                    player,
+                    settings,
+                    etFullName,
+                    rgGender,
+                    spinnerCourse,
+                    sbGameDifficulty,
+                    tvGameDifficulty,
+                    cvCalendar,
+                    ivZodiacSign,
+                    tvZodiacSign,
+                    btnRegister,
+                    btnNewPlayer,
+                    tvResult
+                )
             }
-            val course = spinnerCourse.selectedItem.toString()
-            val difficulty = sbGameDifficulty.progress
-            val zodiacSign = getZodiacSign(selectedDate)
-
-            val settingsFragment = parentFragmentManager.fragments.find { it is SettingsFragment } as? SettingsFragment
-            val baseSettings = settingsFragment?.settings ?: Settings(1,10,5,60)
-
-            val player = createPlayer(fullName,gender,course,difficulty,selectedDate,zodiacSign.first)
-//            val info = formatPlayerInfo(player, settings)
-//            tvResult.text = info
-//            tvResult.visibility = TextView.VISIBLE
-            val intent = Intent(requireContext(), GameActivity::class.java).apply {
-                putExtra("player", player)
-                putExtra("settings", baseSettings)
-            }
-            startActivity(intent)
         }
+
+        btnNewPlayer.setOnClickListener {
+            resetForm(
+                etFullName,
+                rgGender,
+                spinnerCourse,
+                sbGameDifficulty,
+                tvGameDifficulty,
+                cvCalendar,
+                ivZodiacSign,
+                tvZodiacSign,
+                btnRegister,
+                btnNewPlayer,
+                btnSelectPlayer,
+                tvResult
+            )
+        }
+
+        btnRegister.setOnClickListener {
+            if (isEditingExistingPlayer) {
+                updateExistingPlayer(
+                    etFullName,
+                    rgGender,
+                    spinnerCourse,
+                    sbGameDifficulty,
+                    selectedDate,
+                    btnRegister,
+                    tvResult
+                )
+            } else {
+                registerNewPlayer(
+                    etFullName,
+                    rgGender,
+                    spinnerCourse,
+                    sbGameDifficulty,
+                    selectedDate,
+                    btnRegister,
+                    btnNewPlayer,
+                    tvResult
+                )
+            }
+        }
+
+        // Инициализация UI в режиме регистрации
+        updateUIForRegistrationMode(btnRegister, btnNewPlayer, btnSelectPlayer, tvResult)
+
         return view
+    }
+
+    private fun showPlayerSelectionDialog(onPlayerSelected: (PlayerEntity, GameSettingsEntity?) -> Unit) {
+        val dialog = PlayerSelectionDialog(onPlayerSelected)
+        dialog.show(parentFragmentManager, "PlayerSelectionDialog")
+    }
+
+    private fun loadPlayerData(
+        player: PlayerEntity,
+        settings: GameSettingsEntity?,
+        etFullName: EditText,
+        rgGender: RadioGroup,
+        spinnerCourse: Spinner,
+        sbGameDifficulty: SeekBar,
+        tvGameDifficulty: TextView,
+        cvCalendar: CalendarView,
+        ivZodiacSign: ImageView,
+        tvZodiacSign: TextView,
+        btnRegister: Button,
+        btnNewPlayer: Button,
+        tvResult: TextView
+    ) {
+        etFullName.setText(player.fullName)
+
+        when (player.gender) {
+            "Мужчина" -> rgGender.check(R.id.rbMale)
+            "Женщина" -> rgGender.check(R.id.rbFemale)
+            else -> rgGender.clearCheck()
+        }
+
+        val courses = resources.getStringArray(R.array.courses_array)
+        val courseIndex = courses.indexOf(player.course)
+        if (courseIndex != -1) {
+            spinnerCourse.setSelection(courseIndex)
+        }
+
+        sbGameDifficulty.progress = player.difficulty
+        tvGameDifficulty.text = "Уровень сложности: ${player.difficulty}"
+
+        cvCalendar.date = player.birthDate
+        selectedDate = player.birthDate
+        updateZodiacDisplay(selectedDate, ivZodiacSign, tvZodiacSign)
+
+        currentPlayerId = player.id
+        currentSettingsId = settings?.id ?: 0
+        isEditingExistingPlayer = true
+
+        btnRegister.text = "Обновить и играть"
+        btnNewPlayer.visibility = View.VISIBLE
+        tvResult.text = "Редактирование: ${player.fullName}\nНажмите 'Новый игрок' для регистрации нового"
+        tvResult.visibility = View.VISIBLE
+
+        if (settings != null) {
+            updateSettingsFragment(settings)
+        }
+    }
+
+    private fun updateSettingsFragment(settings: GameSettingsEntity) {
+        val settingsFragment = parentFragmentManager.fragments.find { it is SettingsFragment } as? SettingsFragment
+        settingsFragment?.settings = Settings(
+            gameSpeed = settings.gameSpeed,
+            maxInsects = settings.maxInsects,
+            bonusInterval = settings.bonusInterval,
+            roundDuration = settings.roundDuration
+        )
+        settingsFragment?.updateUI()
+    }
+
+    private fun resetForm(
+        etFullName: EditText,
+        rgGender: RadioGroup,
+        spinnerCourse: Spinner,
+        sbGameDifficulty: SeekBar,
+        tvGameDifficulty: TextView,
+        cvCalendar: CalendarView,
+        ivZodiacSign: ImageView,
+        tvZodiacSign: TextView,
+        btnRegister: Button,
+        btnNewPlayer: Button,
+        btnSelectPlayer: Button,
+        tvResult: TextView
+    ) {
+        etFullName.text.clear()
+        rgGender.clearCheck()
+        spinnerCourse.setSelection(0)
+        sbGameDifficulty.progress = 1
+        tvGameDifficulty.text = "Уровень сложности: 1"
+
+        val currentDate = Calendar.getInstance().timeInMillis
+        cvCalendar.date = currentDate
+        selectedDate = currentDate
+        updateZodiacDisplay(selectedDate, ivZodiacSign, tvZodiacSign)
+
+        currentPlayerId = 0
+        currentSettingsId = 0
+        isEditingExistingPlayer = false
+
+        updateUIForRegistrationMode(btnRegister, btnNewPlayer, btnSelectPlayer, tvResult)
+        resetSettingsToDefault()
+    }
+
+    private fun updateUIForRegistrationMode(
+        btnRegister: Button,
+        btnNewPlayer: Button,
+        btnSelectPlayer: Button,
+        tvResult: TextView
+    ) {
+        btnRegister.text = "Зарегистрировать и играть"
+        btnNewPlayer.visibility = View.GONE
+        btnSelectPlayer.visibility = View.VISIBLE
+        tvResult.text = "Заполните данные для регистрации нового игрока"
+        tvResult.visibility = View.VISIBLE
+    }
+
+    private fun resetSettingsToDefault() {
+        val defaultSettings = Settings(1, 10, 5, 60)
+        val settingsFragment = parentFragmentManager.fragments.find { it is SettingsFragment } as? SettingsFragment
+        settingsFragment?.settings = defaultSettings
+        settingsFragment?.updateUI()
+    }
+
+    private fun registerNewPlayer(
+        etFullName: EditText,
+        rgGender: RadioGroup,
+        spinnerCourse: Spinner,
+        sbGameDifficulty: SeekBar,
+        birthDate: Long,
+        btnRegister: Button,
+        btnNewPlayer: Button,
+        tvResult: TextView
+    ) {
+        val fullName = etFullName.text.toString().trim()
+        if (fullName.isEmpty()) {
+            tvResult.text = "Введите ФИО"
+            tvResult.visibility = View.VISIBLE
+            return
+        }
+
+        lifecycleScope.launch {
+            viewModel.getPlayerByName(fullName).collectLatest { existingPlayer ->
+                if (existingPlayer != null) {
+                    tvResult.text = "Игрок с именем '$fullName' уже существует"
+                    tvResult.visibility = View.VISIBLE
+                    return@collectLatest
+                }
+
+                btnNewPlayer.visibility = View.VISIBLE
+                val gender = when (rgGender.checkedRadioButtonId) {
+                    R.id.rbMale -> "Мужчина"
+                    R.id.rbFemale -> "Женщина"
+                    else -> "Не выбран"
+                }
+                val course = spinnerCourse.selectedItem.toString()
+                val difficulty = sbGameDifficulty.progress
+                val zodiacSign = getZodiacSign(birthDate)
+
+                val settingsFragment = parentFragmentManager.fragments.find { it is SettingsFragment } as? SettingsFragment
+                val baseSettings = settingsFragment?.settings ?: Settings(1, 10, 5, 60)
+
+                val playerEntity = PlayerEntity(
+                    fullName = fullName,
+                    gender = gender,
+                    course = course,
+                    difficulty = difficulty,
+                    birthDate = birthDate,
+                    zodiacSign = zodiacSign.first
+                )
+
+                val gameSettingsEntity = GameSettingsEntity(
+                    playerId = 0,
+                    gameSpeed = baseSettings.gameSpeed,
+                    maxInsects = baseSettings.maxInsects,
+                    bonusInterval = baseSettings.bonusInterval,
+                    roundDuration = baseSettings.roundDuration
+                )
+
+                viewModel.registerPlayerAndSettings(
+                    player = playerEntity,
+                    settings = gameSettingsEntity,
+                    onSuccess = { playerId, settingsId ->
+                        startGameActivity(playerId, settingsId, fullName, gender, course, difficulty, zodiacSign.first, baseSettings)
+                    },
+                    onError = { exception ->
+                        tvResult.text = "Ошибка регистрации: ${exception.message}"
+                        tvResult.visibility = View.VISIBLE
+                    }
+                )
+            }
+        }
+    }
+
+    private fun updateExistingPlayer(
+        etFullName: EditText,
+        rgGender: RadioGroup,
+        spinnerCourse: Spinner,
+        sbGameDifficulty: SeekBar,
+        birthDate: Long,
+        btnRegister: Button,
+        tvResult: TextView
+    ) {
+        val fullName = etFullName.text.toString().trim()
+        if (fullName.isEmpty()) {
+            tvResult.text = "Введите ФИО"
+            tvResult.visibility = View.VISIBLE
+            return
+        }
+
+        val gender = when (rgGender.checkedRadioButtonId) {
+            R.id.rbMale -> "Мужчина"
+            R.id.rbFemale -> "Женщина"
+            else -> "Не выбран"
+        }
+        val course = spinnerCourse.selectedItem.toString()
+        val difficulty = sbGameDifficulty.progress
+        val zodiacSign = getZodiacSign(birthDate)
+
+        val settingsFragment = parentFragmentManager.fragments.find { it is SettingsFragment } as? SettingsFragment
+        val baseSettings = settingsFragment?.settings ?: Settings(1, 10, 5, 60)
+
+        val updatedPlayer = PlayerEntity(
+            id = currentPlayerId,
+            fullName = fullName,
+            gender = gender,
+            course = course,
+            difficulty = difficulty,
+            birthDate = birthDate,
+            zodiacSign = zodiacSign.first
+        )
+
+        viewModel.updatePlayer(updatedPlayer)
+
+        if (currentSettingsId != 0L) {
+            val updatedSettings = GameSettingsEntity(
+                id = currentSettingsId,
+                playerId = currentPlayerId,
+                gameSpeed = baseSettings.gameSpeed,
+                maxInsects = baseSettings.maxInsects,
+                bonusInterval = baseSettings.bonusInterval,
+                roundDuration = baseSettings.roundDuration
+            )
+            viewModel.updateSettings(updatedSettings)
+        }
+
+        startGameActivity(currentPlayerId, currentSettingsId, fullName, gender, course, difficulty, zodiacSign.first, baseSettings)
+    }
+
+    private fun startGameActivity(
+        playerId: Long,
+        settingsId: Long,
+        fullName: String,
+        gender: String,
+        course: String,
+        difficulty: Int,
+        zodiacSign: String,
+        baseSettings: Settings
+    ) {
+        val player = Player(fullName, gender, course, difficulty, selectedDate, zodiacSign)
+        val intent = Intent(requireContext(), GameActivity::class.java).apply {
+            putExtra("player", player)
+            putExtra("settings", baseSettings)
+            putExtra("playerId", playerId)
+            putExtra("settingsId", settingsId)
+        }
+        startActivity(intent)
     }
     private fun getZodiacSign(dateMillis: Long): Pair<String, String>{
         val calendar = Calendar.getInstance().apply { timeInMillis = dateMillis }
@@ -109,7 +434,7 @@ class RegistrationFragment : Fragment(){
             in 823..922 -> Pair("Дева","Virgo")
             in 923..1022 -> Pair("Весы","Libra")
             in 1023..1121 -> Pair("Скорпион","Scorpio")
-            in 1122..1221 -> Pair("Стрелец","Sagittatius")
+            in 1122..1221 -> Pair("Стрелец","Sagittarius")
             in 1222..1231, in 101..119 -> Pair("Козерог","Capricorn")
             else -> Pair("Неизвестно", "Unknown")
         }

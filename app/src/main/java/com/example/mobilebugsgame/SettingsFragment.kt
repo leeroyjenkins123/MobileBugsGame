@@ -82,4 +82,17 @@ class SettingsFragment : Fragment() {
 
         return view
     }
+
+    // Добавьте этот метод в класс SettingsFragment:
+    fun updateUI() {
+        view?.findViewById<TextView>(R.id.tvSpeed)?.text = "Скорость игры: ${settings.gameSpeed}"
+        view?.findViewById<TextView>(R.id.tvMaxCockroaches)?.text = "Максимальное количество тараканов: ${settings.maxInsects}"
+        view?.findViewById<TextView>(R.id.tvBonusInterval)?.text = "Интервал появления бонусов: ${settings.bonusInterval} сек"
+        view?.findViewById<TextView>(R.id.tvRoundDuration)?.text = "Длительность раунда: ${settings.roundDuration} сек"
+
+        view?.findViewById<SeekBar>(R.id.sbSpeed)?.progress = settings.gameSpeed
+        view?.findViewById<SeekBar>(R.id.sbMaxCockroaches)?.progress = settings.maxInsects
+        view?.findViewById<SeekBar>(R.id.sbBonusInterval)?.progress = settings.bonusInterval
+        view?.findViewById<SeekBar>(R.id.sbRoundDuration)?.progress = settings.roundDuration
+    }
 }

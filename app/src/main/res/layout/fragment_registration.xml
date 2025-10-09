@@ -97,6 +97,21 @@
             android:layout_marginTop="10dp"
             android:text="Зарегистрироваться" />
 
+        <Button
+            android:id="@+id/btnSelectPlayer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Выбрать игрока" />
+
+        <Button
+            android:id="@+id/btnNewPlayer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Новый игрок"
+            android:visibility="gone"/>
+
         <TextView
             android:id="@+id/tvResult"
             android:layout_width="match_parent"
