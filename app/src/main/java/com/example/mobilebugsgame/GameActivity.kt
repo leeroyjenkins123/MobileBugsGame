@@ -10,11 +10,15 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.ViewModelProvider
 import kotlin.random.Random
 
 class GameActivity : AppCompatActivity(){
     private lateinit var player: Player
     private lateinit var settings: Settings
+    private lateinit var viewModel: GameViewModel
+    private var playerId: Long = 0
+    private var settingsId: Long = 0
 
     private var score = 0
     private var lives = 5
@@ -55,6 +59,9 @@ class GameActivity : AppCompatActivity(){
         player = intent.getParcelableExtra("player", Player::class.java)!!
         settings = intent.getParcelableExtra("settings", Settings::class.java)!!
 
+        playerId = intent.getLongExtra("playerId", 0)
+        settingsId = intent.getLongExtra("settingsId", 0)
+
         scoreView = findViewById(R.id.textScore)
         timerView = findViewById(R.id.textTimer)
         livesView = findViewById(R.id.textLives)
@@ -67,6 +74,14 @@ class GameActivity : AppCompatActivity(){
             }
             true
         }
+
+        val database = AppDatabase.getInstance(this)
+        val repository = GameRepository(
+            database.playerDao(),
+            database.gameSettingsDao(),
+            database.gameResultsDao()
+        )
+        viewModel = ViewModelProvider(this, GameViewModelFactory(repository))[GameViewModel::class.java]
 
         updateUI()
         startGame()
@@ -277,6 +292,10 @@ class GameActivity : AppCompatActivity(){
             insect.setOnClickListener(null)
         }
         activeInsects.clear()
+
+        if (playerId != 0L && settingsId != 0L) {
+            viewModel.saveGameResult(playerId, settingsId, score)
+        }
 
         gameContainer.postDelayed({
             gameContainer.removeAllViews()

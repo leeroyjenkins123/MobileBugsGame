@@ -37,4 +37,12 @@
         <p align="center"><i>Желаем удачи!</i></p>
         ]]>
     </string>
+    <string-array name="courses_array">
+        <item>Бакалавриат. 1 курс</item>
+        <item>Бакалавриат. 2 курс</item>
+        <item>Бакалавриат. 3 курс</item>
+        <item>Бакалавриат. 4 курс</item>
+        <item>Магистратура. 1 курс</item>
+        <item>Магистратура. 2 курс</item>
+    </string-array>
 </resources>
