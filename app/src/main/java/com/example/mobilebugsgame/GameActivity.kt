@@ -13,12 +13,32 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import kotlin.random.Random
 
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.media.MediaPlayer
+
+
 class GameActivity : AppCompatActivity(){
     private lateinit var player: Player
     private lateinit var settings: Settings
     private lateinit var viewModel: GameViewModel
     private var playerId: Long = 0
     private var settingsId: Long = 0
+<<<<<<< Updated upstream
+=======
+
+    // === BONUS FEATURE START ===
+    private var bonusTimer: CountDownTimer? = null
+    private var isTiltControlActive = false
+    private lateinit var sensorManager: SensorManager
+    private var tiltX = 0f
+    private var tiltY = 0f
+    private var screamSound: MediaPlayer? = null
+    // === BONUS FEATURE END ===
+
+>>>>>>> Stashed changes
 
     private var score = 0
     private var lives = 5
@@ -85,6 +105,14 @@ class GameActivity : AppCompatActivity(){
 
         updateUI()
         startGame()
+<<<<<<< Updated upstream
+=======
+
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        screamSound = MediaPlayer.create(this, R.raw.bug_scream) // добавь в res/raw/bug_scream.mp3
+
+        startBonusTimer()
+>>>>>>> Stashed changes
     }
 
     private fun startGame(){
@@ -326,5 +354,109 @@ class GameActivity : AppCompatActivity(){
         gameTimer?.cancel()
         insectSpawnTimer?.cancel()
         isGameActive = false
+<<<<<<< Updated upstream
+=======
+        bonusTimer?.cancel()
+        sensorManager.unregisterListener(tiltListener)
+        screamSound?.release()
+    }
+
+    private fun startBonusTimer() {
+        val intervalMs = (settings.bonusInterval * 1000L).coerceAtLeast(5000L)
+        bonusTimer = object : CountDownTimer(settings.roundDuration * 1000L, intervalMs) {
+            override fun onTick(millisUntilFinished: Long) {
+                showBonus()
+            }
+
+            override fun onFinish() {}
+        }.start()
+    }
+
+    private fun showBonus() {
+        val bonus = ImageView(this).apply {
+            setImageResource(R.drawable.ic_bonus)
+            layoutParams = ViewGroup.LayoutParams(160, 160)
+            x = Random.nextInt(50, gameContainer.width - 200).toFloat()
+            y = Random.nextInt(50, gameContainer.height - 200).toFloat()
+            alpha = 0f
+
+            animate().alpha(1f).setDuration(300).start()
+
+            setOnClickListener {
+                activateTiltControl()
+                gameContainer.removeView(this)
+            }
+        }
+        gameContainer.addView(bonus)
+
+        startBonusMovement(bonus)
+
+        bonus.postDelayed({
+            if (bonus.parent != null) {
+                gameContainer.removeView(bonus)
+            }
+        }, 5000)
+    }
+
+    private fun startBonusMovement(bonus: ImageView) {
+        var dx = if (Random.nextBoolean()) 5f else -5f
+        var dy = if (Random.nextBoolean()) 5f else -5f
+        val stepTime = 16L
+
+        val moveRunnable = object : Runnable {
+            override fun run() {
+                if (bonus.parent == null) return
+
+                var newX = bonus.x + dx
+                var newY = bonus.y + dy
+
+                if (newX <= 0 || newX + bonus.width >= gameContainer.width) {
+                    dx = -dx
+                    newX = bonus.x + dx
+                }
+                if (newY <= 0 || newY + bonus.height >= gameContainer.height) {
+                    dy = -dy
+                    newY = bonus.y + dy
+                }
+
+                bonus.x = newX
+                bonus.y = newY
+
+                bonus.postDelayed(this, stepTime)
+            }
+        }
+        bonus.post(moveRunnable)
+    }
+
+    private fun activateTiltControl() {
+        if (isTiltControlActive) return
+        isTiltControlActive = true
+
+        screamSound?.start()
+
+        val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        sensorManager.registerListener(tiltListener, sensor, SensorManager.SENSOR_DELAY_GAME)
+
+        gameContainer.postDelayed({
+            isTiltControlActive = false
+            sensorManager.unregisterListener(tiltListener)
+        }, 10000)
+    }
+
+    private val tiltListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            tiltX = -event.values[0] / 2
+            tiltY = event.values[1] / 2
+
+            if (isTiltControlActive) {
+                for (insect in activeInsects) {
+                    insect.x = (insect.x + tiltX).coerceIn(0f, gameContainer.width - insect.width.toFloat())
+                    insect.y = (insect.y + tiltY).coerceIn(0f, gameContainer.height - insect.height.toFloat())
+                }
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+>>>>>>> Stashed changes
     }
 }
