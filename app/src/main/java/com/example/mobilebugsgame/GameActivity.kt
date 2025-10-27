@@ -26,8 +26,6 @@ class GameActivity : AppCompatActivity(){
     private lateinit var viewModel: GameViewModel
     private var playerId: Long = 0
     private var settingsId: Long = 0
-<<<<<<< Updated upstream
-=======
 
     // === BONUS FEATURE START ===
     private var bonusTimer: CountDownTimer? = null
@@ -38,7 +36,6 @@ class GameActivity : AppCompatActivity(){
     private var screamSound: MediaPlayer? = null
     // === BONUS FEATURE END ===
 
->>>>>>> Stashed changes
 
     private var score = 0
     private var lives = 5
@@ -105,14 +102,11 @@ class GameActivity : AppCompatActivity(){
 
         updateUI()
         startGame()
-<<<<<<< Updated upstream
-=======
 
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         screamSound = MediaPlayer.create(this, R.raw.bug_scream) // добавь в res/raw/bug_scream.mp3
 
         startBonusTimer()
->>>>>>> Stashed changes
     }
 
     private fun startGame(){
@@ -354,8 +348,6 @@ class GameActivity : AppCompatActivity(){
         gameTimer?.cancel()
         insectSpawnTimer?.cancel()
         isGameActive = false
-<<<<<<< Updated upstream
-=======
         bonusTimer?.cancel()
         sensorManager.unregisterListener(tiltListener)
         screamSound?.release()
@@ -457,6 +449,5 @@ class GameActivity : AppCompatActivity(){
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
->>>>>>> Stashed changes
     }
 }

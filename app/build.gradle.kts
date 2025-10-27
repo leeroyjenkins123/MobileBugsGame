@@ -11,7 +11,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.mobilebugsgame5"
+        applicationId = "com.example.mobilebugsgame"
         minSdk = 21
         targetSdk = 36
         versionCode = 1
