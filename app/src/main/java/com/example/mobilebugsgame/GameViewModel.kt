@@ -30,9 +30,8 @@ class GameViewModel(private val repository: GameRepository) : ViewModel() {
     fun getSettingsByPlayer(playerId: Long): Flow<GameSettingsEntity?> =
         repository.getSettingsByPlayer(playerId)
 
-    fun insertSettings(settings: GameSettingsEntity) = viewModelScope.launch {
+    suspend fun insertSettings(settings: GameSettingsEntity): Long =
         repository.insertSettings(settings)
-    }
 
     fun updateSettings(settings: GameSettingsEntity) = viewModelScope.launch {
         repository.updateSettings(settings)

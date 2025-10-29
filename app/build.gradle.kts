@@ -80,4 +80,8 @@ dependencies {
     implementation("com.tickaroo.tikxml:retrofit-converter:0.8.13")
     kapt("com.tickaroo.tikxml:processor:0.8.13")
     implementation("com.squareup.okio:okio:3.4.0")
+    implementation("io.insert-koin:koin-android:3.4.0")
+    implementation("io.insert-koin:koin-androidx-compose:3.4.0")
+// если используете Compose
+    implementation("io.insert-koin:koin-androidx-workmanager:3.4.0")
 }

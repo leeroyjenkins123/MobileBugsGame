@@ -11,41 +11,41 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.media.MediaPlayer
-import android.util.Log
+import android.view.Surface
+import org.koin.android.ext.android.inject
+import org.koin.androidx.viewmodel.ext.android.viewModel
 import kotlin.random.Random
 
 class GameActivity : AppCompatActivity() {
 
+    private val gameStateViewModel: GameStateViewModel by viewModel()
+    private val  gameViewModel: GameViewModel by viewModel()
+
     private lateinit var player: Player
     private lateinit var settings: Settings
-    private lateinit var viewModel: GameViewModel
     private var playerId: Long = 0
     private var settingsId: Long = 0
 
-    private lateinit var cbrRepository: CbrRepository
+    private val  cbrRepository: CbrRepository by inject()
     private var gameTimer: CountDownTimer? = null
     private var spawnTimer: CountDownTimer? = null
     private var goldTimer: CountDownTimer? = null
     private var bonusTimer: CountDownTimer? = null
 
-    private var isGameActive = true
     private var isTiltControlActive = false
     private lateinit var sensorManager: SensorManager
     private var tiltX = 0f
     private var tiltY = 0f
     private var screamSound: MediaPlayer? = null
-
-    private var score = 0
-    private var lives = 5
 
     private lateinit var scoreView: TextView
     private lateinit var timerView: TextView
@@ -54,25 +54,16 @@ class GameActivity : AppCompatActivity() {
     private lateinit var gameOverText: TextView
 
     private val activeInsects = mutableListOf<ImageView>()
+    private val activeGoldInsects = mutableListOf<ImageView>()
+    private val activeBonusInsects = mutableListOf<ImageView>()
 
     private companion object {
         const val BASE_SPAWN_INTERVAL = 1300L
         const val BASE_INSECTS_PER_SPAWN = 1
     }
 
-    private data class InsectType(
-        val drawableRes: Int,
-        val points: Int,
-        val speedMultiplier: Float
-    )
-
-    private val insectTypes = listOf(
-        InsectType(R.drawable.ic_cockroach, 10, 1f),
-        InsectType(R.drawable.ic_beetle, 5, 0.5f),
-        InsectType(R.drawable.ic_fly, 15, 1.5f)
-    )
-
-    private val goldInsectType = InsectType(R.drawable.ic_gold_bonus, 0, 0.8f)
+    private val insectTypes = InsectTypes.REGULAR_INSECTS
+    private val goldInsectType = InsectTypes.GOLD_BONUS
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,21 +81,19 @@ class GameActivity : AppCompatActivity() {
         gameContainer = findViewById(R.id.gameContainer)
         gameOverText = findViewById(R.id.textGameOver)
 
-        cbrRepository = CbrRepository()
-
-        val database = AppDatabase.getInstance(this)
-        val repository = GameRepository(
-            database.playerDao(),
-            database.gameSettingsDao(),
-            database.gameResultsDao()
-        )
-        viewModel = ViewModelProvider(this, GameViewModelFactory(repository))[GameViewModel::class.java]
 
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         screamSound = MediaPlayer.create(this, R.raw.bug_scream)
 
+        // Инициализируем игру в ViewModel
+        if (gameStateViewModel.getCurrentState().player == null) {
+            gameStateViewModel.initializeGame(player, settings)
+        }
+
+        setupObservers()
+
         gameContainer.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN && isGameActive) handleMiss()
+            if (event.action == MotionEvent.ACTION_DOWN && gameStateViewModel.getCurrentState().isGameActive) handleMiss()
             true
         }
 
@@ -114,11 +103,25 @@ class GameActivity : AppCompatActivity() {
         startBonusTimer()
     }
 
+    private fun setupObservers() {
+        lifecycleScope.launch {
+            gameStateViewModel.gameState.collectLatest { state ->
+                updateUI(state)
+                if (state.lives <= 0 && state.isGameActive) {
+                    gameOver()
+                }
+            }
+        }
+    }
+
     private fun startGame() {
         gameOverText.visibility = TextView.GONE
         timerView.visibility = TextView.VISIBLE
 
-        gameTimer = object : CountDownTimer(settings.roundDuration * 1000L, 1000L) {
+        val state = gameStateViewModel.getCurrentState()
+        val roundDuration = state.settings?.roundDuration ?: 60
+
+        gameTimer = object : CountDownTimer(roundDuration * 1000L, 1000L) {
             override fun onTick(millisUntilFinished: Long) {
                 timerView.text = "Время: ${millisUntilFinished / 1000}"
             }
@@ -128,10 +131,10 @@ class GameActivity : AppCompatActivity() {
             }
         }.start()
 
-        spawnTimer = object : CountDownTimer(settings.roundDuration * 1000L, getScaledSpawnInterval()) {
+        spawnTimer = object : CountDownTimer(roundDuration * 1000L, getScaledSpawnInterval()) {
             override fun onTick(millisUntilFinished: Long) {
-                if (!isGameActive) return
-                val spawnCount = getScaledSpawnCount().coerceAtMost(settings.maxInsects - activeInsects.size)
+                if (!gameStateViewModel.getCurrentState().isGameActive) return
+                val spawnCount = getScaledSpawnCount().coerceAtMost(getMaxInsects() - activeInsects.size)
                 repeat(spawnCount) { spawnInsect() }
             }
 
@@ -139,75 +142,109 @@ class GameActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun getScaledSpawnCount(): Int =
-        (BASE_INSECTS_PER_SPAWN * settings.gameSpeed).coerceIn(1, settings.maxInsects.coerceAtLeast(1))
+    private fun getScaledSpawnCount(): Int {
+        val state = gameStateViewModel.getCurrentState()
+        val gameSpeed = state.settings?.gameSpeed ?: 1
+        val maxInsects = state.settings?.maxInsects ?: 10
+        return (BASE_INSECTS_PER_SPAWN * gameSpeed).coerceIn(1, maxInsects.coerceAtLeast(1))
+    }
 
-    private fun getScaledSpawnInterval(): Long =
-        (BASE_SPAWN_INTERVAL / (settings.gameSpeed * 2)).coerceIn(200L, 2000L)
+    private fun getScaledSpawnInterval(): Long {
+        val state = gameStateViewModel.getCurrentState()
+        val gameSpeed = state.settings?.gameSpeed ?: 1
+        return (BASE_SPAWN_INTERVAL / (gameSpeed * 2)).coerceIn(200L, 2000L)
+    }
+
+    private fun getMaxInsects(): Int {
+        return gameStateViewModel.getCurrentState().settings?.maxInsects ?: 10
+    }
 
     private fun spawnInsect() {
-        if (activeInsects.size >= settings.maxInsects) return
+        if (activeInsects.size >= getMaxInsects()) return
+
         val type = insectTypes.random()
-        val insect = createMovingImageView(type.drawableRes, 120, 120, type.points) {
-            score += type.points
-            removeInsect(it)
+        val insectId = System.currentTimeMillis().toString() + Random.nextInt(1000)
+
+        val insectData = InsectData(
+            id = insectId,
+            type = type,
+            x = Random.nextInt(50, gameContainer.width - 120).toFloat(),
+            y = Random.nextInt(50, gameContainer.height - 120).toFloat()
+        )
+        gameStateViewModel.addInsect(insectData)
+
+        val insect = createMovingImageView(type.drawableRes, 120, 120, type.points, insectId, true) {
+            gameStateViewModel.updateScore(type.points)
+            gameStateViewModel.removeInsect(insectId)
+            removeInsect(it, true)
             showPointsSplash(it.x, it.y, type.points)
-            updateUI()
             spawnInsect() // respawn
         }
-        startMovement(insect, type.speedMultiplier * settings.gameSpeed * 5)
+        startMovement(insect, type.speedMultiplier * getGameSpeed() * 5)
     }
 
     private fun startGoldTimer() {
-        goldTimer = object : CountDownTimer(settings.roundDuration * 1000L, 20000L) {
+        val state = gameStateViewModel.getCurrentState()
+        val roundDuration = state.settings?.roundDuration ?: 60
+
+        goldTimer = object : CountDownTimer(roundDuration * 1000L, 20000L) {
             override fun onTick(millisUntilFinished: Long) {
-                if (!isGameActive || activeInsects.size >= settings.maxInsects) return
+                if (!gameStateViewModel.getCurrentState().isGameActive || activeInsects.size >= getMaxInsects()) return
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
-                        // Используем основной метод с текущей датой
-                        val goldRate = cbrRepository.getCurrentGoldRate()
-                        val points = goldRate.toInt().coerceAtLeast(10)
-                        Log.d("GameActivity", "Gold insect points: $points (current rate: $goldRate)")
+                        val points = cbrRepository.getCurrentGoldRate().toInt().coerceAtLeast(10)
                         launch(Dispatchers.Main) { spawnGoldInsect(points) }
-                    } catch (e: Exception) {
-                        Log.e("GameActivity", "Gold timer error: ${e.message}")
-                        // Спавним золотого насекомого со стандартными очками
-                        launch(Dispatchers.Main) { spawnGoldInsect(75) }
-                    }
+                    } catch (_: Exception) {}
                 }
             }
-            override fun onFinish() {
-                Log.d("GameActivity", "Gold timer finished")
-            }
+
+            override fun onFinish() {}
         }.start()
-        Log.d("GameActivity", "Gold timer started with current date")
     }
 
     private fun spawnGoldInsect(points: Int) {
-        val insect = createMovingImageView(R.drawable.ic_gold_bonus, 140, 140, points) {
-            score += points
-            removeInsect(it)
+        val insectId = "gold_" + System.currentTimeMillis() + Random.nextInt(1000)
+        val goldType = InsectTypes.createGoldInsect(points)
+
+        val insectData = InsectData(
+            id = insectId,
+            type = goldType,
+            x = Random.nextInt(50, gameContainer.width - 140).toFloat(),
+            y = Random.nextInt(50, gameContainer.height - 140).toFloat()
+        )
+        gameStateViewModel.addInsect(insectData)
+
+        val insect = createMovingImageView(R.drawable.ic_gold_bonus, 140, 140, points, insectId, false) {
+            gameStateViewModel.updateScore(points)
+            gameStateViewModel.removeInsect(insectId)
+            removeInsect(it, false)
             showPointsSplash(it.x, it.y, points, Color.YELLOW)
-            updateUI()
         }
-        startMovement(insect, goldInsectType.speedMultiplier * settings.gameSpeed * 5)
+        startMovement(insect, goldInsectType.speedMultiplier * getGameSpeed() * 5)
     }
 
     private fun startBonusTimer() {
-        val intervalMs = (settings.bonusInterval * 1000L).coerceAtLeast(5000L)
-        bonusTimer = object : CountDownTimer(settings.roundDuration * 1000L, intervalMs) {
+        val state = gameStateViewModel.getCurrentState()
+        val roundDuration = state.settings?.roundDuration ?: 60
+        val bonusInterval = state.settings?.bonusInterval ?: 10
+        val intervalMs = (bonusInterval * 1000L).coerceAtLeast(5000L)
+
+        bonusTimer = object : CountDownTimer(roundDuration * 1000L, intervalMs) {
             override fun onTick(millisUntilFinished: Long) = showBonus()
             override fun onFinish() {}
         }.start()
     }
 
     private fun showBonus() {
-        val bonus = createMovingImageView(R.drawable.ic_bonus, 160, 160, 0) {
+        val bonus = createMovingImageView(R.drawable.ic_bonus, 160, 160, 0, "bonus_${System.currentTimeMillis()}", false) {
             activateTiltControl()
-            gameContainer.removeView(it)
+            removeInsect(it, false)
         }
         startMovement(bonus, 5f)
-        bonus.postDelayed({ if (bonus.parent != null) gameContainer.removeView(bonus) }, 5000)
+
+        bonus.postDelayed({
+            if (bonus.parent != null) removeInsect(bonus, false)
+        }, 5000)
     }
 
     private fun activateTiltControl() {
@@ -225,33 +262,58 @@ class GameActivity : AppCompatActivity() {
 
     private val tiltListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
-            tiltX = -event.values[0] / 2
-            tiltY = event.values[1] / 2
+            val rotation = windowManager.defaultDisplay.rotation
+
+            var x = event.values[0]
+            var y = event.values[1]
+
+            when (rotation) {
+                Surface.ROTATION_0 -> {
+                    tiltX = -x / 2
+                    tiltY = y / 2
+                }
+                Surface.ROTATION_90 -> {
+                    tiltX = y / 2
+                    tiltY = x / 2
+                }
+                Surface.ROTATION_180 -> {
+                    tiltX = x / 2
+                    tiltY = -y / 2
+                }
+                Surface.ROTATION_270 -> {
+                    tiltX = -y / 2
+                    tiltY = -x / 2
+                }
+            }
+
             if (isTiltControlActive) {
-                activeInsects.forEach { insect ->
+                (activeInsects + activeGoldInsects + activeBonusInsects).forEach { insect ->
                     insect.x = (insect.x + tiltX).coerceIn(0f, gameContainer.width - insect.width.toFloat())
                     insect.y = (insect.y + tiltY).coerceIn(0f, gameContainer.height - insect.height.toFloat())
                 }
             }
         }
-
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
     }
 
     private fun handleMiss() {
-        if (!isGameActive) return
-        lives--
-        score = (score - 2).coerceAtLeast(0)
-        updateUI()
+        if (!gameStateViewModel.getCurrentState().isGameActive) return
+        gameStateViewModel.decreaseLives()
         gameContainer.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100L)
             .withEndAction { gameContainer.animate().scaleX(1f).scaleY(1f).setDuration(100L).start() }.start()
-        if (lives <= 0) gameOver()
     }
 
-    private fun removeInsect(insect: ImageView) {
+    private fun removeInsect(insect: ImageView, isRegular: Boolean) {
         insect.clearAnimation()
         insect.setOnClickListener(null)
-        activeInsects.remove(insect)
+
+        when {
+            isRegular -> activeInsects.remove(insect)
+            insect.drawable.constantState?.equals(resources.getDrawable(R.drawable.ic_gold_bonus, null)?.constantState) == true ->
+                activeGoldInsects.remove(insect)
+            else -> activeBonusInsects.remove(insect)
+        }
+
         gameContainer.removeView(insect)
     }
 
@@ -260,6 +322,8 @@ class GameActivity : AppCompatActivity() {
         width: Int,
         height: Int,
         points: Int,
+        insectId: String,
+        isRegular: Boolean,
         onClick: ((ImageView) -> Unit)? = null
     ): ImageView {
         val imageView = ImageView(this).apply {
@@ -267,15 +331,22 @@ class GameActivity : AppCompatActivity() {
             layoutParams = ViewGroup.LayoutParams(width, height)
             x = Random.nextInt(50, gameContainer.width - width).toFloat()
             y = Random.nextInt(50, gameContainer.height - height).toFloat()
-            tag = points
+            tag = insectId
             alpha = 0f
             onClick?.let { listener -> setOnClickListener { listener(this) } }
         }
         gameContainer.addView(imageView)
-        activeInsects.add(imageView)
+
+        when {
+            isRegular -> activeInsects.add(imageView)
+            drawableRes == R.drawable.ic_gold_bonus -> activeGoldInsects.add(imageView)
+            else -> activeBonusInsects.add(imageView)
+        }
+
         imageView.animate().alpha(1f).setDuration(300).start()
         return imageView
     }
+
 
     private fun startMovement(view: ImageView, speed: Float) {
         var dx = if (Random.nextBoolean()) speed else -speed
@@ -283,7 +354,7 @@ class GameActivity : AppCompatActivity() {
         val stepTime = 16L
         val moveRunnable = object : Runnable {
             override fun run() {
-                if (!isGameActive || view.parent == null) return
+                if (!gameStateViewModel.getCurrentState().isGameActive || view.parent == null) return
                 view.x = (view.x + dx).coerceIn(0f, gameContainer.width - view.width.toFloat())
                 view.y = (view.y + dy).coerceIn(0f, gameContainer.height - view.height.toFloat())
                 if (view.x <= 0 || view.x + view.width >= gameContainer.width) dx = -dx
@@ -295,18 +366,20 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun showPointsSplash(x: Float, y: Float, points: Int, color: Int = Color.YELLOW) {
-        val killSplash = ImageView(this).apply { setImageResource(R.drawable.ic_kill_splash)
+        val killSplash = ImageView(this).apply {
+            setImageResource(R.drawable.ic_kill_splash)
             layoutParams = ViewGroup.LayoutParams(120, 120)
             this.x = x
             this.y = y
             alpha = 0f
-            animate().alpha(0.8f) .setDuration(200) .withEndAction {
+            animate().alpha(0.8f).setDuration(200).withEndAction {
                 animate().alpha(0f)
                     .setDuration(200)
                     .withEndAction {
-                        gameContainer.removeView(this) }
-                    .start() }
-                .start()
+                        gameContainer.removeView(this)
+                    }
+                    .start()
+            }.start()
         }
         gameContainer.addView(killSplash)
 
@@ -332,12 +405,22 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun updateUI() {
-        scoreView.text = "Очки: $score"
-        livesView.text = "Жизни: $lives"
+        val state = gameStateViewModel.getCurrentState()
+        scoreView.text = "Очки: ${state.score}"
+        livesView.text = "Жизни: ${state.lives}"
+    }
+
+    private fun updateUI(state: GameState) {
+        scoreView.text = "Очки: ${state.score}"
+        livesView.text = "Жизни: ${state.lives}"
+    }
+
+    private fun getGameSpeed(): Int {
+        return gameStateViewModel.getCurrentState().settings?.gameSpeed ?: 1
     }
 
     private fun gameOver() {
-        isGameActive = false
+        gameStateViewModel.setIsGameActive(false)
         gameTimer?.cancel()
         spawnTimer?.cancel()
         goldTimer?.cancel()
@@ -347,12 +430,15 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun clearActiveInsects() {
-        activeInsects.forEach {
-            it.clearAnimation()
-            it.setOnClickListener(null)
-            gameContainer.removeView(it)
+        listOf(activeInsects, activeGoldInsects, activeBonusInsects).forEach { list ->
+            list.forEach {
+                it.clearAnimation()
+                it.setOnClickListener(null)
+                gameContainer.removeView(it)
+            }
+            list.clear()
         }
-        activeInsects.clear()
+        gameStateViewModel.clearInsects()
     }
 
     private fun endGame(message: String) {
@@ -361,7 +447,8 @@ class GameActivity : AppCompatActivity() {
         gameOverText.visibility = TextView.VISIBLE
 
         if (playerId != 0L && settingsId != 0L) {
-            viewModel.saveGameResult(playerId, settingsId, score)
+            val state = gameStateViewModel.getCurrentState()
+            gameViewModel.saveGameResult(playerId, settingsId, state.score)
         }
 
         gameContainer.postDelayed({
@@ -371,13 +458,14 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun showGameResultDialog() {
+        val state = gameStateViewModel.getCurrentState()
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Игра окончена!")
             .setMessage("""
-                Ваш результат: $score очков
-                Уровень сложности: ${player.difficulty}
-                Скорость игры: ${settings.gameSpeed}
-                Игрок: ${player.fullName}
+                Ваш результат: ${state.score} очков
+                Уровень сложности: ${state.player?.difficulty}
+                Скорость игры: ${state.settings?.gameSpeed}
+                Игрок: ${state.player?.fullName}
             """.trimIndent())
             .setPositiveButton("OK") { dialog, _ ->
                 dialog.dismiss()
@@ -393,7 +481,7 @@ class GameActivity : AppCompatActivity() {
         spawnTimer?.cancel()
         goldTimer?.cancel()
         bonusTimer?.cancel()
-        isGameActive = false
+        gameStateViewModel.setIsGameActive(false)
         sensorManager.unregisterListener(tiltListener)
         screamSound?.release()
     }
