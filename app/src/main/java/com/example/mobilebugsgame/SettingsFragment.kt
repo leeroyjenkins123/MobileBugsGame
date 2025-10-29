@@ -9,10 +9,16 @@ import android.widget.SeekBar
 import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 class SettingsFragment : Fragment() {
 
-    var settings = Settings(1,10,5,60)
+    private lateinit var sharedSettingsViewModel: SharedSettingsViewModel
+    private var settings = Settings(1,10,5,60)
+
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreateView(
@@ -21,6 +27,15 @@ class SettingsFragment : Fragment() {
     ): View? {
         val view = inflater.inflate(R.layout.fragment_settings, container, false)
 
+        sharedSettingsViewModel = ViewModelProvider(requireActivity())[SharedSettingsViewModel::class.java]
+
+        lifecycleScope.launch {
+            sharedSettingsViewModel.settings.collectLatest { newSettings ->
+                settings = newSettings
+                updateUI()
+            }
+        }
+
         val sbSpeed = view.findViewById<SeekBar>(R.id.sbSpeed)
         val tvSpeed = view.findViewById<TextView>(R.id.tvSpeed)
         sbSpeed.min = 1
@@ -28,14 +43,16 @@ class SettingsFragment : Fragment() {
         tvSpeed.text = "Скорость игры: ${settings.gameSpeed}"
         sbSpeed.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                settings = settings.copy(gameSpeed = progress)
-                tvSpeed.text = "Скорость игры: ${settings.gameSpeed}"
+                if (fromUser) {
+                    settings = settings.copy(gameSpeed = progress)
+                    tvSpeed.text = "Скорость игры: ${settings.gameSpeed}"
+                    sharedSettingsViewModel.updateSettings(settings)
+                }
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
-        // Максимальное количество тараканов
         val sbMaxCockroaches = view.findViewById<SeekBar>(R.id.sbMaxCockroaches)
         val tvMaxCockroaches = view.findViewById<TextView>(R.id.tvMaxCockroaches)
         sbMaxCockroaches.min = 1
@@ -43,14 +60,16 @@ class SettingsFragment : Fragment() {
         tvMaxCockroaches.text = "Максимальное количество тараканов: ${settings.maxInsects}"
         sbMaxCockroaches.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                settings = settings.copy(maxInsects = progress)
-                tvMaxCockroaches.text = "Максимальное количество тараканов: ${settings.maxInsects}"
+                if (fromUser) {
+                    settings = settings.copy(maxInsects = progress)
+                    tvMaxCockroaches.text = "Максимальное количество тараканов: ${settings.maxInsects}"
+                    sharedSettingsViewModel.updateSettings(settings)
+                }
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
-        // Интервал появления бонусов
         val sbBonusInterval = view.findViewById<SeekBar>(R.id.sbBonusInterval)
         val tvBonusInterval = view.findViewById<TextView>(R.id.tvBonusInterval)
         sbBonusInterval.min = 1
@@ -58,14 +77,16 @@ class SettingsFragment : Fragment() {
         tvBonusInterval.text = "Интервал появления бонусов: ${settings.bonusInterval} сек"
         sbBonusInterval.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                settings = settings.copy(bonusInterval = progress)
-                tvBonusInterval.text = "Интервал появления бонусов: ${settings.bonusInterval} сек"
+                if (fromUser) {
+                    settings = settings.copy(bonusInterval = progress)
+                    tvBonusInterval.text = "Интервал появления бонусов: ${settings.bonusInterval} сек"
+                    sharedSettingsViewModel.updateSettings(settings)
+                }
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
-        // Длительность раунда
         val sbRoundDuration = view.findViewById<SeekBar>(R.id.sbRoundDuration)
         val tvRoundDuration = view.findViewById<TextView>(R.id.tvRoundDuration)
         sbRoundDuration.min = 1
@@ -73,8 +94,11 @@ class SettingsFragment : Fragment() {
         tvRoundDuration.text = "Длительность раунда: ${settings.roundDuration} сек"
         sbRoundDuration.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                settings = settings.copy(roundDuration = progress)
-                tvRoundDuration.text = "Длительность раунда: ${settings.roundDuration} сек"
+                if (fromUser) {
+                    settings = settings.copy(roundDuration = progress)
+                    tvRoundDuration.text = "Длительность раунда: ${settings.roundDuration} сек"
+                    sharedSettingsViewModel.updateSettings(settings)
+                }
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
@@ -83,7 +107,6 @@ class SettingsFragment : Fragment() {
         return view
     }
 
-    // Добавьте этот метод в класс SettingsFragment:
     fun updateUI() {
         view?.findViewById<TextView>(R.id.tvSpeed)?.text = "Скорость игры: ${settings.gameSpeed}"
         view?.findViewById<TextView>(R.id.tvMaxCockroaches)?.text = "Максимальное количество тараканов: ${settings.maxInsects}"
